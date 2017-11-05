@@ -1,0 +1,202 @@
+---
+title: "State ESAs"
+output:
+  flexdashboard::flex_dashboard:
+    css: custom.css
+    social: menu
+    df_print: paged
+    navbar:
+    - {title: "CLEANR", align: right, href: "http://www.law.uci.edu/academics/centers/cleanr/", target: "_blank"}
+    - {title: "CCI", align: right, href: "https://cci-dev.org", target: "_blank"}
+    - {title: "", icon: "fa-envelope-o fa-lg", align: right, href: "mailto:esa@defenders.org?subject=State ESA app"}
+    - {title: "", icon: "fa-github fa-lg", align: right, href: "https://github.com/Defenders-ESC/state-ESAs"}
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(dplyr)
+library(rio)
+library(DT)
+library(flexdashboard)
+library(plotly)
+library(shiny)
+
+wide <- readRDS("states_es_laws.rds")
+dat <- readRDS("states_es_laws_tall.rds")
+key <- readRDS("states_es_laws_key_tall.rds")
+```
+
+Main
+=======================================================================
+
+Column {data-width=750}
+-----------------------------------------------------------------------
+
+### 
+
+```{r header, echo=FALSE}
+fluidRow(
+  column(
+    5,
+    p(style="font-size: 1.7em; font-weight: bold; margin-bottom: 0",
+      "State Endangered Species Laws"),
+    p(style="width:90%; font-size: 1.4rem; margin-bottom: 0",
+      "The strength of state laws protecting endangered species varies widely.")
+  ),
+  column(2),
+  column(
+    5,
+    selectInput(
+      inputId = "component",
+      label = "Scores (select 1 or more ESA element)",
+      choices = c("Statute" = "statute", 
+                  "Plant & animal coverage" = "plant_animal_cov", 
+                  "Taxonomic level coverage" = "taxonomic_level_cov", 
+                  "Evidence" = "evidence", 
+                  "Citizen petition" = "citizen_petition", 
+                  "Recovery" = "recovery", 
+                  "Conserv. programs" = "conserv_programs", 
+                  "Critical habitat" = "critical_habitat",
+                  "Private land use restrictions" = "private_land_restrictions", 
+                  "Substantive restrictions" = "substantive_restrictions",
+                  "Consultation" = "consultation", 
+                  "Animal commerce restrictions" = "animal_commerce_restrictions", 
+                  "Animal take restrictions" = "animal_take_restrictions", 
+                  "Habitat modification is take" = "habitat_mod_take", 
+                  "Plant commerce restrictions" = "plant_commerce_restrictions", 
+                  "Plant take restrictions" = "plant_take_restrictions"),
+      selected = c("statute", "recovery"),
+      multiple = TRUE,
+      width = "100%"
+    )
+  )
+)
+```
+
+```{r timely, echo = FALSE}
+cur_z <- reactive({ 
+  d2 <- filter(dat, variable %in% input$component)
+  if(dim(d2)[1] > 0) {
+    cur_tot <- aggregate(d2$value ~ d2$code, FUN = sum, na.rm = TRUE)
+    names(cur_tot) <- c("code", "value")
+  } else {
+    cur_tot <- data_frame(code=c(NA), value=c(NA))
+  }
+  cur_tot <- left_join(cur_tot, d2, by = "code")
+  names(cur_tot)[2] <- "value"
+  cur_tot
+})
+
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'lambert usa'),
+  showlakes = TRUE,
+  lakecolor = toRGB('white')
+)
+
+renderPlotly({
+  hover <- cur_z()$state
+  plot_geo(cur_z(), locationmode = 'USA-states') %>%
+    add_trace(
+      type = "choropleth",
+      z = cur_z()$value,
+      text = hover,
+      locations = ~code,
+      # color = ~cur_z(), 
+      colors = "YlGnBu"
+    ) %>%
+    colorbar(title = "Score") %>%
+    layout(
+      margin=list(r=100, l=20, t=20, b=100),
+      geo = g
+    )
+})
+```
+
+Column {data-width=250}
+-----------------------------------------------------------------------
+
+### 
+
+```{r barchart, echo = FALSE}
+renderPlotly({
+  cur_rank <- rank(-cur_z()$value)
+  state <- reorder(cur_z()$state, -cur_rank)
+  score <- cur_z()$value
+  data <- data_frame(state=state, score=score, rank=cur_rank)
+  plot_ly(
+    data,
+    x = data$score,
+    y = data$state,
+    hover = cur_z()$state,
+    marker = list(color = "#094789"),
+    type = "bar",
+    orientation = "h"
+  ) %>%
+    layout(
+      margin = list(l = 100, t = 30, b = 30),
+      yaxis = list(tickfont = list(size = 10))
+    )
+})
+```
+
+Data
+=======================================================================
+
+Column {data-width=1000}
+-----------------------------------------------------------------------
+
+<div style="background: white">
+
+```{r datatable, echo = FALSE}
+renderDataTable({
+  names(wide) <- c("state", "statute", "plant & animal coverage", 
+                  "taxonomic level coverage", "evidence", "citizen petition?", 
+                  "recovery", "conserv. programs", "critical habitat",            
+                  "private land use restrictions", "substantive restrictions", 
+                  "consultation", "animal commerce restrictions", 
+                  "animal take restrictions", "habitat modification is take?", 
+                  "plant commerce restrictions", "plant take restrictions",      
+                  "total", "citations", "notes", "code", "rank")  
+  DT::datatable(
+    wide,
+    extensions = c("Buttons"),
+    options = list(
+      rownames = FALSE,
+      pageLength = 50,
+      dom = 'Bfrtip',
+      buttons = c('copy', 'csv', 'excel')
+    )
+  )
+})
+```
+
+</div>
+
+Details
+=======================================================================
+
+Column {data-width=300}
+-----------------------------------------------------------------------
+
+### Background
+
+This app accompanies the report [_The Limitations of State Laws and Resources for Endangered Species Protections_](http://www.law.uci.edu/academics/centers/cleanr/news-pdfs/cleanr-esa-report-final.pdf) from Camacho and colleagues at the [Center for Land, Environment, and  Natural Resources (CLEANR) at the University of California, Irvine](http://www.law.uci.edu/academics/centers/cleanr/). Please see that report for details on how the data was collected and general conclusions. For comparison to these results, see Goble and colleagues' [1999 paper](https://www.researchgate.net/profile/Dale_Goble/publication/222467583_Local_and_national_protection_of_endangered_species_An_assessment/links/0912f5112726bab0eb000000/Local-and-national-protection-of-endangered-species-An-assessment.pdf) that used the same methods.
+
+### Basic usage
+
+You may select one or more aspects of state endangered species laws you would like to view on the map under the [Main tab](https://cci-dev.org/shiny/closed/states/#section-main) by clicking in the selection box and then clicking on different elements to add them to the score. The map and the bar graph, including the sorted rankings of states, will automatically update for your selection.
+
+
+Column {data-width=700}
+-----------------------------------------------------------------------
+
+### How elements of state ESA laws were scored
+
+```{r key, echo = FALSE}
+key$variable <- gsub(key$variable, pattern = "_", replacement = " ")
+names(key)[1] <- "ESA element"
+knitr::kable(key)
+```
